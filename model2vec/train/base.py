@@ -343,7 +343,7 @@ class EnsembleTextDataset(Dataset):
 
         tensors = []
         for component_texts in texts:
-            component_tensors = [torch.LongTensor(x) for x in texts]
+            component_tensors = [torch.LongTensor(x) for x in component_texts]
             component_padded = pad_sequence(component_tensors, batch_first=True, padding_value=0)
             tensors.append(component_padded.T)
 
