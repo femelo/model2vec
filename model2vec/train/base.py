@@ -183,7 +183,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
 
     @classmethod
     def from_pretrained(
-        cls: type[ModelType], *, out_dim: int = 2, model_names: list[str] = ["minishlab/potion-base-8m", "minishlab/potion-base-32m"], **kwargs: Any
+        cls: type[ModelType], *, out_dim: int = 2, model_names: list[str] = ["minishlab/potion-base-2M", "minishlab/potion-base-4M", "minishlab/potion-base-8M"], **kwargs: Any
     ) -> ModelType:
         """Load the models from pretrained model2vec models."""
         models = [StaticModel.from_pretrained(model_name) for model_name in model_names]
@@ -216,7 +216,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
         This function is analogous to `StaticModel.encode`, but reimplemented to allow gradients
         to pass through.
 
-        :param input_ids: A 2D tensor of input ids. All input ids are have to be within bounds.
+        :param input_ids: A 3D tensor of input ids. All input ids are have to be within bounds.
         :return: The mean over the input ids, weighted by token weights.
         """
         embedded = []
@@ -250,14 +250,15 @@ class FinetunableStaticEnsembleModel(nn.Module):
 
         :param texts: The texts to tokenize.
         :param max_length: If this is None, the sequence lengths are truncated to 512.
-        :return: A 2D padded tensor
+        :return: A 3D padded tensor
         """
         encoded = []
         for component in self.components:
             component_encoded: list[Encoding] = component.tokenizer.encode_batch_fast(texts, add_special_tokens=False)
             component_encoded_ids: list[torch.Tensor] = [torch.Tensor(encoding.ids[:max_length]).long() for encoding in component_encoded]
-            encoded.append(pad_sequence(component_encoded_ids, batch_first=True, padding_value=component.pad_id))
-        return pad_sequence(encoded, batch_first=True, padding_value=0)
+            component_padded = pad_sequence(component_encoded_ids, batch_first=True, padding_value=component.pad_id)
+            encoded.append(component_padded.T)
+        return pad_sequence(encoded, batch_first=True, padding_value=0).swapaxes(0, 2)
 
     @property
     def device(self) -> str:
@@ -344,9 +345,9 @@ class EnsembleTextDataset(Dataset):
         for component_texts in texts:
             component_tensors = [torch.LongTensor(x) for x in texts]
             component_padded = pad_sequence(component_tensors, batch_first=True, padding_value=0)
-            tensors.append(component_padded)
+            tensors.append(component_padded.T)
 
-        padded = pad_sequence(tensors, batch_first=True, padding_value=0)
+        padded = pad_sequence(tensors, batch_first=True, padding_value=0).swapaxes(0, 2)
 
         return padded, torch.stack(targets)
 
