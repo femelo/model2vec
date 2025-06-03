@@ -221,7 +221,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
         """
         embedded = []
         for c_id, component in enumerate(self.components):
-            component_input_ids = input_ids[:, :, c_id].squeeze(2)
+            component_input_ids = input_ids[:, :, c_id]
             w = self.w[c_id][component_input_ids]
             w = torch.sigmoid(w)
             zeros = (component_input_ids != component.pad_id).float()
