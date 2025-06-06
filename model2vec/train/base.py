@@ -179,7 +179,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
     def get_device(self) -> torch.device:
         if torch.backends.mps.is_available():
             return torch.device("mps")
-        elif torch.backends.cuda.is_available():
+        elif torch.cuda.is_available():
             return torch.device("cuda")
         else:
             return torch.device("cpu")
