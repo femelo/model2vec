@@ -149,11 +149,11 @@ class FinetunableStaticEnsembleModel(nn.Module):
         :param pad_id: The padding id. This is set to 0 in almost all model2vec models
         """
         super().__init__()
-        self.device = self.get_device()
+        self._device = self.get_device()
         self.out_dim = out_dim
         self.components = components
         for c_id, component in enumerate(components):
-            self.components[c_id].vectors = component.vectors.to(self.device)
+            self.components[c_id].vectors = component.vectors.to(self._device)
         self.embeddings = [
             nn.Embedding(
                 num_embeddings=component.vectors.shape[0],
@@ -190,7 +190,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
         for component in self.components:
             component_weights = torch.zeros(
                 len(component.vectors),
-                device=self.device,
+                device=self._device,
             )
             component_weights[component.pad_id] = -10_000
             weights.append(nn.Parameter(component_weights))
@@ -241,7 +241,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
         embedded = []
         in_cpu = input_ids.is_cpu
         if in_cpu:
-            input_ids = input_ids.to(self.device)
+            input_ids = input_ids.to(self._device)
         for c_id, component in enumerate(self.components):
             component_input_ids = input_ids[:, :, c_id]
             w = self.w[c_id][component_input_ids]
