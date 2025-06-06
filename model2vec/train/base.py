@@ -149,11 +149,19 @@ class FinetunableStaticEnsembleModel(nn.Module):
         :param pad_id: The padding id. This is set to 0 in almost all model2vec models
         """
         super().__init__()
+        self.device = self.get_device()
         self.out_dim = out_dim
         self.components = components
+        for c_id, component in enumerate(components):
+            self.components[c_id].vectors = component.vectors.to(self.device)
         self.embeddings = [
-            nn.Embedding.from_pretrained(component.vectors.clone(), freeze=False, padding_idx=component.pad_id)
-            for component in components
+            nn.Embedding(
+                num_embeddings=component.vectors.shape[0],
+                embedding_dim=component.vectors.shape[1],
+                padding_idx=component.pad_id,
+                _weight=component.vectors,
+                _freeze=False,
+            ) for component in self.components
         ]
         self.embed_dim = [component.vectors.shape[1] for component in components]
 
@@ -168,11 +176,22 @@ class FinetunableStaticEnsembleModel(nn.Module):
         self.head = self.construct_head()
         self.w = self.construct_weights()
 
+    def get_device(self) -> torch.device:
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        elif torch.backends.cuda.is_available():
+            return torch.device("cuda")
+        else:
+            return torch.device("cpu")
+
     def construct_weights(self) -> list[nn.Parameter]:
         """Construct the weights for the model."""
         weights = []
         for component in self.components:
-            component_weights = torch.zeros(len(component.vectors))
+            component_weights = torch.zeros(
+                len(component.vectors),
+                device=self.device,
+            )
             component_weights[component.pad_id] = -10_000
             weights.append(nn.Parameter(component_weights))
         return weights
@@ -220,6 +239,9 @@ class FinetunableStaticEnsembleModel(nn.Module):
         :return: The mean over the input ids, weighted by token weights.
         """
         embedded = []
+        in_cpu = input_ids.is_cpu
+        if in_cpu:
+            input_ids = input_ids.to(self.device)
         for c_id, component in enumerate(self.components):
             component_input_ids = input_ids[:, :, c_id]
             w = self.w[c_id][component_input_ids]
@@ -235,7 +257,10 @@ class FinetunableStaticEnsembleModel(nn.Module):
             component_embedded = component_embedded / length[:, None]
             embedded.append(component_embedded)
 
-        return nn.functional.normalize(torch.cat(embedded, dim=1))
+        normalized = nn.functional.normalize(torch.cat(embedded, dim=1))
+        if in_cpu:
+            normalized = normalized.to("cpu")
+        return normalized
 
     def forward(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the mean, and a classifier layer after."""
@@ -347,7 +372,7 @@ class EnsembleTextDataset(Dataset):
             component_padded = pad_sequence(component_tensors, batch_first=True, padding_value=0)
             tensors.append(component_padded.T)
 
-        padded = pad_sequence(tensors, batch_first=True, padding_value=0).swapaxes(0, 2)
+        padded = pad_sequence(tensors, batch_first=True, padding_value=0)
 
         return padded, torch.stack(targets)
 

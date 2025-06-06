@@ -38,10 +38,12 @@ class StaticModelForClassification(FinetunableStaticModel):
         hidden_dim: int = 512,
         out_dim: int = 2,
         pad_id: int = 0,
+        dropout: float = 0.2,
     ) -> None:
         """Initialize a standard classifier model."""
         self.n_layers = n_layers
         self.hidden_dim = hidden_dim
+        self.dropout = dropout
         # Alias: Follows scikit-learn. Set to dummy classes
         self.classes_: list[str] = [str(x) for x in range(out_dim)]
         # multilabel flag will be set based on the type of `y` passed to fit.
@@ -60,9 +62,16 @@ class StaticModelForClassification(FinetunableStaticModel):
         modules = [
             nn.Linear(self.embed_dim, self.hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=self.dropout),
         ]
         for _ in range(self.n_layers - 1):
-            modules.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU()])
+            modules.extend(
+                [
+                    nn.Linear(self.hidden_dim, self.hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(p=self.dropout),
+                ]
+            )
         modules.extend([nn.Linear(self.hidden_dim, self.out_dim)])
 
         for module in modules:
@@ -137,6 +146,7 @@ class StaticModelForClassification(FinetunableStaticModel):
         device: str = "auto",
         X_val: list[str] | None = None,
         y_val: LabelType | None = None,
+        label_smoothing: float = 0.0,
     ) -> StaticModelForClassification:
         """
         Fit a model.
@@ -204,7 +214,7 @@ class StaticModelForClassification(FinetunableStaticModel):
         logger.info("Preparing validation dataset.")
         val_dataset = self._prepare_dataset(validation_texts, validation_labels)
 
-        c = _ClassifierLightningModule(self, learning_rate=learning_rate)
+        c = _ClassifierLightningModule(self, learning_rate=learning_rate, label_smoothing=label_smoothing)
 
         n_train_batches = len(train_dataset) // batch_size
         callbacks: list[Callback] = []
@@ -380,10 +390,12 @@ class StaticEnsembleModelForClassification(FinetunableStaticEnsembleModel):
         n_layers: int = 1,
         hidden_dim: int = 512,
         out_dim: int = 2,
+        dropout: float = 0.2,
     ) -> None:
         """Initialize a standard classifier model."""
         self.n_layers = n_layers
         self.hidden_dim = hidden_dim
+        self.dropout = dropout
         # Alias: Follows scikit-learn. Set to dummy classes
         self.classes_: list[str] = [str(x) for x in range(out_dim)]
         # multilabel flag will be set based on the type of `y` passed to fit.
@@ -402,9 +414,16 @@ class StaticEnsembleModelForClassification(FinetunableStaticEnsembleModel):
         modules = [
             nn.Linear(sum(self.embed_dim), self.hidden_dim),
             nn.ReLU(),
+            nn.Dropout(p=self.dropout),
         ]
         for _ in range(self.n_layers - 1):
-            modules.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU()])
+            modules.extend(
+                [
+                    nn.Linear(self.hidden_dim, self.hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(p=self.dropout),
+                ]
+            )
         modules.extend([nn.Linear(self.hidden_dim, self.out_dim)])
 
         for module in modules:
@@ -479,6 +498,7 @@ class StaticEnsembleModelForClassification(FinetunableStaticEnsembleModel):
         device: str = "auto",
         X_val: list[str] | None = None,
         y_val: LabelType | None = None,
+        label_smoothing: float = 0.0,
     ) -> StaticEnsembleModelForClassification:
         """
         Fit a model.
@@ -546,7 +566,7 @@ class StaticEnsembleModelForClassification(FinetunableStaticEnsembleModel):
         logger.info("Preparing validation dataset.")
         val_dataset = self._prepare_dataset(validation_texts, validation_labels)
 
-        c = _ClassifierLightningModule(self, learning_rate=learning_rate)
+        c = _ClassifierLightningModule(self, learning_rate=learning_rate, label_smoothing=label_smoothing)
 
         n_train_batches = len(train_dataset) // batch_size
         callbacks: list[Callback] = []
@@ -723,12 +743,20 @@ class StaticEnsembleModelForClassification(FinetunableStaticEnsembleModel):
 
 
 class _ClassifierLightningModule(pl.LightningModule):
-    def __init__(self, model: StaticModelForClassification | StaticEnsembleModelForClassification, learning_rate: float) -> None:
+    def __init__(
+        self,
+        model: StaticModelForClassification | StaticEnsembleModelForClassification,
+        learning_rate: float,
+        label_smoothing: float = 0.0,
+    ) -> None:
         """Initialize the LightningModule."""
         super().__init__()
         self.model = model
         self.learning_rate = learning_rate
-        self.loss_function = nn.CrossEntropyLoss() if not model.multilabel else nn.BCEWithLogitsLoss()
+        self.loss_function = (
+            nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+            if not model.multilabel else nn.BCEWithLogitsLoss()
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Simple forward pass."""
