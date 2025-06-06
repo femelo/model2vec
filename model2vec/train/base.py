@@ -177,7 +177,7 @@ class FinetunableStaticEnsembleModel(nn.Module):
         self.w = self.construct_weights()
 
     def get_device(self) -> torch.device:
-        if torch.cuda.is_available():
+        if torch.cuda.device_count():
             return torch.device("cuda")
         elif torch.backends.mps.is_available():
             return torch.device("mps")
